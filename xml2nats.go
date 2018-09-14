@@ -7,7 +7,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/ClinicalSystemsEngineering/nats"
 	"github.com/ClinicalSystemsEngineering/webadmin"
+	"github.com/nats-io/go-nats-streaming"
 	"gopkg.in/natefinch/lumberjack.v2" //rotational logging
 )
 
@@ -23,11 +25,26 @@ var parsedmsgs = make(chan string, 10000) //message processing channel for xml2n
 var timeoutDuration = 5 * time.Second //read / write timeout duration
 
 func main() {
+
+	//r5 xml and web admin ports
 	xmlPort := flag.String("xmlPort", "5051", "xml listener port for localhost")
 	httpPort := flag.String("httpPort", "80", "localhost listner port for http server")
 
-	//need to add NATS flags here
-
+	//natspub flags
+	var clusterID string
+	var clientID string
+	var async bool
+	var URL string
+	var subj string
+	flag.StringVar(&URL, "s", stan.DefaultNatsURL, "The nats server URLs (separated by comma)")
+	flag.StringVar(&URL, "server", stan.DefaultNatsURL, "The nats server URLs (separated by comma)")
+	flag.StringVar(&clusterID, "c", "test-cluster", "The NATS Streaming cluster ID")
+	flag.StringVar(&clusterID, "cluster", "test-cluster", "The NATS Streaming cluster ID")
+	flag.StringVar(&clientID, "id", "stan-pub", "The NATS Streaming client ID to connect with")
+	flag.StringVar(&clientID, "clientid", "stan-pub", "The NATS Streaming client ID to connect with")
+	flag.BoolVar(&async, "a", false, "Publish asynchronously")
+	flag.BoolVar(&async, "async", false, "Publish asynchronously")
+	flag.StringVar(&subj, "subj", "Hospital.System", "Name of subject to publish to")
 	flag.Parse()
 
 	log.SetOutput(&lumberjack.Logger{
@@ -49,6 +66,7 @@ func main() {
 	//start a webserver for a web admin
 	go webadmin.Webserver(*httpPort)
 
+	go natspub.Pubber(clusterID, clientID, async, URL, parsedmsgs, subj)
 	for {
 
 		// Listen for an incoming xml connection.
