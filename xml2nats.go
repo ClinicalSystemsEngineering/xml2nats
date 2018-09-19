@@ -50,13 +50,13 @@ func main() {
 	flag.BoolVar(&async, "a", false, "Publish asynchronously")
 	flag.BoolVar(&async, "async", false, "Publish asynchronously")
 	flag.StringVar(&subj, "subj", "Hospital.System", "Name of subject to publish ingest messages to")
-	flag.StringVar(&cancelsubj, "cancelsubj", "Hospital.System.Cancel", "Name of subject to publish cancels messages to")
+	flag.StringVar(&cancelsubj, "cancelsubj", "Hospital.System.Cancel", "Name of subject to publish cancel messages to")
 	flag.StringVar(&canceltxt, "canceltext", "Cancel", "Text to parse against for cancelling")
 
 	flag.Parse()
 
 	log.SetOutput(&lumberjack.Logger{
-		Filename:   "/var/log/xml2tap/xml2tap.log",
+		Filename:   "/var/log/xml2nats/xml2nats.log",
 		MaxSize:    100, // megabytes
 		MaxBackups: 5,
 		MaxAge:     60,   //days
@@ -74,7 +74,7 @@ func main() {
 	//start a webserver for a web admin
 	go webadmin.Webserver(*httpPort)
 
-	//start a publisher to topic
+	//start a publisher to ingest topic
 	go natspub.Pubber(clusterID, clientID, async, URL, parsedmsgs, subj)
 
 	//start a publisher to cancel topic
@@ -117,11 +117,11 @@ func main() {
 							return
 						}
 
-						// We have decoded the xml message now send it off to TAP server or reply if ping
+						// We have decoded the xml message now send it off to nats server or reply if ping
 						log.Printf("Parsed: Pin:%v;Msg:%v\n", p.ID, p.TagText)
 
 						//note the R5 system periodically sends out a PING looking for a response
-						//this will handle that response or put the decoded xml into the TAP output queue
+						//this will handle that response or put the decoded xml into the NATS output queue
 						if p.ID == "" && p.TagText == "___PING___" {
 							//send response to connection
 							response := "<?xml version=\"1.0\" encoding=\"utf-8\"?> <PageTXSrvResp State=\"7\" PagesInQueue=\"0\" PageOK=\"1\" />"
