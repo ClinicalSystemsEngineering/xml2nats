@@ -5,9 +5,10 @@ import (
 	"flag"
 	"log"
 	"net"
+	"strings"
 	"time"
 
-	"github.com/ClinicalSystemsEngineering/nats"
+	"github.com/ClinicalSystemsEngineering/nats/natspub"
 	"github.com/ClinicalSystemsEngineering/webadmin"
 	"github.com/nats-io/go-nats-streaming"
 	"gopkg.in/natefinch/lumberjack.v2" //rotational logging
@@ -20,7 +21,8 @@ type Page struct {
 	//Type string `xml:"Type"`
 }
 
-var parsedmsgs = make(chan string, 10000) //message processing channel for xml2nats conversions
+var parsedmsgs = make(chan string, 10000)       //message processing channel for xml2nats conversions
+var cancelparsedmsgs = make(chan string, 10000) //cancel message processing channel for xml2nats conversions
 
 var timeoutDuration = 5 * time.Second //read / write timeout duration
 
@@ -36,6 +38,9 @@ func main() {
 	var async bool
 	var URL string
 	var subj string
+	var cancelsubj string
+	var canceltxt string
+
 	flag.StringVar(&URL, "s", stan.DefaultNatsURL, "The nats server URLs (separated by comma)")
 	flag.StringVar(&URL, "server", stan.DefaultNatsURL, "The nats server URLs (separated by comma)")
 	flag.StringVar(&clusterID, "c", "test-cluster", "The NATS Streaming cluster ID")
@@ -44,7 +49,10 @@ func main() {
 	flag.StringVar(&clientID, "clientid", "stan-pub", "The NATS Streaming client ID to connect with")
 	flag.BoolVar(&async, "a", false, "Publish asynchronously")
 	flag.BoolVar(&async, "async", false, "Publish asynchronously")
-	flag.StringVar(&subj, "subj", "Hospital.System", "Name of subject to publish to")
+	flag.StringVar(&subj, "subj", "Hospital.System", "Name of subject to publish ingest messages to")
+	flag.StringVar(&cancelsubj, "cancelsubj", "Hospital.System.Cancel", "Name of subject to publish cancels messages to")
+	flag.StringVar(&canceltxt, "canceltext", "Cancel", "Text to parse against for cancelling")
+
 	flag.Parse()
 
 	log.SetOutput(&lumberjack.Logger{
@@ -66,7 +74,11 @@ func main() {
 	//start a webserver for a web admin
 	go webadmin.Webserver(*httpPort)
 
+	//start a publisher to topic
 	go natspub.Pubber(clusterID, clientID, async, URL, parsedmsgs, subj)
+
+	//start a publisher to cancel topic
+	go natspub.Pubber(clusterID, clientID, async, URL, cancelparsedmsgs, cancelsubj)
 	for {
 
 		// Listen for an incoming xml connection.
@@ -76,7 +88,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		// Handle connections in a new goroutine.
+		// Handle xml connections in a new goroutine.
 		go func(c net.Conn, msgs chan<- string) {
 			//set up a decoder on the stream
 			d := xml.NewDecoder(c)
@@ -122,8 +134,11 @@ func main() {
 							}
 
 						} else {
-							parsedmsgs <- string(p.ID) + ";" + string(p.TagText)
-
+							if strings.Contains(strings.ToLower(string(p.TagText)), strings.ToLower(canceltxt)) {
+								cancelparsedmsgs <- string(p.ID) + ";" + string(p.TagText)
+							} else {
+								parsedmsgs <- string(p.ID) + ";" + string(p.TagText)
+							}
 						}
 
 					}
