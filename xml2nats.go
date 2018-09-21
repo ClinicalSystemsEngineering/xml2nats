@@ -77,7 +77,7 @@ func main() {
 	//start a publisher to ingest topic
 	go natspub.Pubber(clusterID, clientID, async, URL, parsedmsgs, subj)
 
-	//start a publisher to cancel topic
+	//start a publisher to cancel ingest topic
 	go natspub.Pubber(clusterID, clientID, async, URL, cancelparsedmsgs, cancelsubj)
 	for {
 
